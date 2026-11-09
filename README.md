@@ -280,5 +280,3 @@ Jupyter, JupyterLab và IPython đã nằm trong `requirements.txt`. Để xoá 
 ## Đóng gói dự án
 
 [Hướng dẫn đóng gói dự án Kedro](https://docs.kedro.org/en/stable/deploy/package_a_project/#package-an-entire-kedro-project)
-#   N e t f l i x - C h u r n - I n s i g h t  
- 
