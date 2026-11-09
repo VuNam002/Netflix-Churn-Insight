@@ -6,6 +6,22 @@ netflix_clean:
   type: pandas.ParquetDataset
   filepath: data/03_primary/netflix_clean.parquet
 
+X_train:
+  type: pandas.ParquetDataset
+  filepath: data/05_model_input/X_train.parquet
+
+X_test:
+  type: pandas.ParquetDataset
+  filepath: data/05_model_input/X_test.parquet
+
+y_train:
+  type: pandas.ParquetDataset
+  filepath: data/05_model_input/y_train.parquet
+
+y_test:
+  type: pandas.ParquetDataset
+  filepath: data/05_model_input/y_test.parquet
+
 classifier:
   type: pickle.PickleDataset
   filepath: data/06_models/classifier.pkl
@@ -14,3 +30,71 @@ classifier:
 metrics:
   type: json.JSONDataset
   filepath: data/08_reporting/metrics.json
+
+stats_data_quality:
+  type: json.JSONDataset
+  filepath: data/08_reporting/statistics/data_quality.json
+
+stats_target:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/statistics/target_distribution.csv
+
+stats_numeric:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/statistics/numeric_summary.csv
+
+stats_categorical:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/statistics/categorical_summary.csv
+
+stats_churn_rate:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/statistics/churn_rate_by_feature.csv
+
+stats_association:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/statistics/target_association.csv
+
+# --- Step 3: preprocessing --------------------------------------------------
+model_features:
+  type: pandas.ParquetDataset
+  filepath: data/04_feature/model_features.parquet
+
+# --- Step 4: visualization --------------------------------------------------
+eda_figures:
+  type: matplotlib.MatplotlibDataset
+  filepath: data/08_reporting/figures/eda
+
+# --- Step 5: model building -------------------------------------------------
+model_comparison:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/training/model_comparison.csv
+
+# --- Step 6: evaluation -----------------------------------------------------
+# Every candidate scored on the test set. Reference only: the model is chosen by
+# cross-validation (model_comparison), never by this table.
+model_comparison_test:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/evaluation/model_comparison_test.csv
+
+metrics_by_segment:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/evaluation/metrics_by_segment.csv
+
+feature_importance:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/evaluation/feature_importance.csv
+
+evaluation_figures:
+  type: matplotlib.MatplotlibDataset
+  filepath: data/08_reporting/evaluation/figures
+
+# --- Step 7: deployment (batch scoring) ------------------------------------
+# Same columns as netflix_customer_churn.csv, with or without `churned`.
+new_customers:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/new_customers.csv
+
+predictions:
+  type: pandas.CSVDataset
+  filepath: data/07_model_output/predictions.csv

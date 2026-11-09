@@ -1,0 +1,5 @@
+statistics:
+  id_column: customer_id
+  target_column: churned
+  numeric_bins: 5   # numeric features are cut into this many equal-size groups
+  alpha: 0.05       # significance level for the chi-square and Spearman tests

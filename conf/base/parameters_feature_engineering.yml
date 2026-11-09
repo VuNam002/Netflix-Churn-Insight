@@ -1,0 +1,25 @@
+feature_engineering:
+  target_column: churned
+
+  # Removed from the model input. The id identifies a customer but explains nothing.
+  # The other five have no relation to churn (chi-square / Spearman p-value > 0.05
+  # in the 'statistics' step, see notebooks/02_statistics.ipynb).
+  drop_columns:
+    - customer_id
+    - age
+    - gender
+    - region
+    - device
+    - favorite_genre
+
+  # Right-skewed columns (skew 2.3 and 15.8): replaced by log1p(x) as log_<name>.
+  # avg_watch_time_per_day equals watch_hours / (last_login_days + 1); it is kept
+  # because it has the strongest link with churn (Spearman -0.73).
+  log_columns:
+    - watch_hours
+    - avg_watch_time_per_day
+
+  # Thresholds read off the churn-rate tables (statistics step):
+  # churn rate jumps after ~30 days without login, and drops from 4 profiles.
+  inactive_days_threshold: 30
+  many_profiles_threshold: 4

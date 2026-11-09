@@ -1,5 +1,8 @@
 model_options:
   test_size: 0.2
   random_state: 42
-  max_features: 5000
-  C: 1.0
+
+# Probability at or above which a customer is predicted to churn.
+# Shared by evaluation (metrics), inference (batch) and serving (API).
+decision:
+  threshold: 0.5

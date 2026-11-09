@@ -2,11 +2,213 @@
 
 [![Powered by Kedro](https://img.shields.io/badge/powered_by-kedro-ffc900?logo=kedro)](https://kedro.org)
 
-## Tổng quan
+Dự án Kedro (`kedro 1.7.0`) xây dựng mô hình dự đoán khách hàng Netflix có rời dịch vụ hay không, từ bộ dữ liệu `netflix_customer_churn.csv` (5.000 khách hàng, cột mục tiêu `churned`: 1 = rời, 0 = ở lại). Dự án đi qua đủ 7 bước của một quy trình Machine Learning, từ thu thập dữ liệu đến triển khai API.
 
-Dự án Kedro (`kedro 1.7.0`) dùng bộ dữ liệu `netflix_customer_churn.csv` (5.000 khách hàng) để xây dựng pipeline dự đoán khách hàng có rời dịch vụ hay không (cột mục tiêu `churned`: 1 = rời, 0 = ở lại).
+## Đọc dự án từ đâu
 
-Các cột trong dữ liệu gốc:
+Nếu bạn mới mở repo này, đọc theo thứ tự sau (khoảng 10 phút):
+
+1. **README này**: bảng 7 bước và [bản đồ cấu trúc](#cấu-trúc-dự-án).
+2. [`conf/base/catalog.yml`](conf/base/catalog.yml): danh sách mọi dữ liệu đi vào và đi ra, nằm ở đâu, định dạng gì.
+3. [`src/netflix/pipeline_registry.py`](src/netflix/pipeline_registry.py): dự án có những pipeline nào và ghép với nhau ra sao.
+4. **Một pipeline hoàn chỉnh**, bắt đầu với [`data_processing`](src/netflix/pipelines/data_processing/): đọc `pipeline.py` trước (nối các bước), rồi `nodes.py` (phép xử lý thật).
+5. [`conf/base/parameters_*.yml`](conf/base/): các con số có thể chỉnh (ngưỡng, tỉ lệ chia, siêu tham số).
+6. Các notebook `notebooks/02` đến `06`: chạy từng ô để thấy dữ liệu thay đổi qua từng bước.
+
+## Quy trình 7 bước ứng với dự án
+
+| Bước | Việc | Chạy thật (lưu file) | Khám phá (notebook) |
+|---|---|---|---|
+| 1. Data collection | Biết dữ liệu từ đâu, mỗi cột nghĩa gì | `conf/base/catalog.yml` khai báo dữ liệu | xem [Bước 1](#bước-1-dữ-liệu) |
+| 2. Statistics | Hiểu dữ liệu qua thống kê | `kedro run --pipeline eda` | `notebooks/02_statistics.ipynb` |
+| 3. Data preprocessing | Làm sạch, tạo feature, chia train/test | `kedro run` (`data_processing`, `feature_engineering`) | `notebooks/03_preprocessing.ipynb` |
+| 4. Data visualization | Biểu đồ khám phá dữ liệu | `kedro run --pipeline eda` | `notebooks/04_visualization.ipynb` |
+| 5. Model building | So sánh mô hình, huấn luyện cái tốt nhất | `kedro run` (`training`) | `notebooks/05_modeling.ipynb` |
+| 6. Model evaluation | Chấm trên tập test, phân tích lỗi | `kedro run` (`evaluation`) | `notebooks/06_evaluation.ipynb` |
+| 7. Model deployment | Chấm điểm hàng loạt và API | `kedro run --pipeline inference`, `uvicorn`, Docker | |
+
+**Cách học đề xuất:** với mỗi bước, mở notebook tương ứng và chạy từng ô để hiểu mình đang làm gì. Khi hiểu rồi thì chạy lệnh Kedro để tạo kết quả thật. Thứ tự notebook: 02 → 03 → 04 → 05, rồi `kedro run`, rồi mới 06 (notebook 06 đọc kết quả do `kedro run` tạo ra).
+
+## Cài đặt và chạy nhanh
+
+```powershell
+cd C:\ML\netflix
+..\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -e ".[dev]"            # cài gói netflix + pytest, ruff
+
+kedro run                          # bước 3, 5, 6: làm sạch, feature, huấn luyện, đánh giá
+kedro run --pipeline eda           # bước 2, 4: thống kê và biểu đồ
+kedro run --pipeline inference     # bước 7: chấm điểm khách mới (cần new_customers.csv)
+pytest                             # chạy test
+```
+
+> `pytest` bao gồm `tests/test_run.py`, bài test này chạy cả pipeline thật nên ghi đè các file trong `data/` và thêm một phiên bản mô hình mới vào `data/06_models/`. Muốn bỏ qua: `pytest --deselect tests/test_run.py`.
+
+Chạy từng pipeline riêng bằng `kedro run --pipeline <tên>`, với tên là một trong:
+`data_processing`, `feature_engineering`, `training`, `evaluation`, `statistics`, `visualization`, `inference`, `eda`.
+
+**Xem sơ đồ pipeline dạng hình (tuỳ chọn):** `pip install kedro-viz` rồi `kedro viz run`. Đây là cách nhanh nhất để thấy dữ liệu đi qua các node nào.
+
+## Cấu trúc dự án
+
+```
+netflix/
+├── conf/                                    <- cấu hình, KHÔNG chứa code
+│   ├── base/
+│   │   ├── catalog.yml                      <- KHAI BÁO dữ liệu: file nào, định dạng gì, ở đâu
+│   │   ├── parameters.yml                   <- tham số dùng chung (test_size, random_state, ngưỡng quyết định)
+│   │   └── parameters_<pipeline>.yml        <- tham số riêng của từng pipeline
+│   └── local/
+│       └── credentials.yml                  <- mật khẩu, API key. KHÔNG commit
+├── data/                                    <- dữ liệu, KHÔNG commit (trừ thư mục rỗng)
+│   ├── 01_raw/               <- dữ liệu gốc, chỉ đọc, không bao giờ sửa
+│   ├── 02_intermediate/      <- đã đổi kiểu, làm sạch sơ bộ (hiện chưa dùng)
+│   ├── 03_primary/           <- bảng chuẩn, sạch (netflix_clean)
+│   ├── 04_feature/           <- bảng feature (model_features)
+│   ├── 05_model_input/       <- X_train, X_test, y_train, y_test
+│   ├── 06_models/            <- model đã train (classifier.pkl, có phiên bản theo thời gian)
+│   ├── 07_model_output/      <- kết quả dự đoán (predictions.csv)
+│   └── 08_reporting/         <- metrics, bảng so sánh, biểu đồ
+├── notebooks/                <- 02 đến 06: khám phá và học từng bước
+├── src/netflix/              <- toàn bộ mã nguồn
+│   ├── pipeline_registry.py  <- đăng ký pipeline (thêm pipeline mới thì thêm vào đây)
+│   ├── settings.py           <- cấu hình framework Kedro (ít khi sửa)
+│   ├── pipelines/            <- mỗi pipeline là một thư mục con (nodes.py + pipeline.py)
+│   │   ├── data_processing/      làm sạch                          (bước 3)
+│   │   ├── feature_engineering/  tạo feature, chia train/test      (bước 3)
+│   │   ├── statistics/           thống kê                          (bước 2)
+│   │   ├── visualization/        biểu đồ                           (bước 4)
+│   │   ├── training/             so sánh và huấn luyện mô hình     (bước 5)
+│   │   ├── evaluation/           đánh giá trên tập test            (bước 6)
+│   │   └── inference/            chấm điểm khách mới hàng loạt     (bước 7)
+│   └── serving/app.py        <- API FastAPI                        (bước 7)
+├── tests/
+│   ├── conftest.py           <- dữ liệu giả dùng chung cho test
+│   ├── pipelines/<tên>/      <- test cho từng pipeline
+│   ├── serving/              <- test cho API
+│   └── test_run.py           <- chạy thử cả pipeline trên dữ liệu thật
+├── Dockerfile, .dockerignore, requirements-serving.txt   <- đóng gói API
+├── pyproject.toml            <- thông tin gói, cấu hình pytest và ruff
+└── requirements.txt          <- thư viện cần cài
+```
+
+**Quy ước của mỗi pipeline:** `nodes.py` chứa các hàm Python thuần (nhận dữ liệu, trả dữ liệu, không đọc/ghi file); `pipeline.py` nối các hàm đó bằng *tên dataset*; đường dẫn file nằm ở `catalog.yml`; con số có thể chỉnh nằm ở `parameters_*.yml`. Nhờ vậy muốn đổi ngưỡng hay đổi nơi lưu file thì không phải sửa code.
+
+**Thư mục và file tự sinh, không sửa tay:** `data/` (trừ `01_raw`, tạo ra bởi `kedro run`), `.viz/`, `*.egg-info/`, `.coverage` (đã nằm trong `.gitignore`), cùng `.ruff_cache/` và `__pycache__/` (bộ nhớ đệm).
+
+### Bốn khái niệm Kedro cần biết
+
+| Khái niệm | Là gì | Nằm ở đâu |
+|---|---|---|
+| **Node** | Một hàm Python xử lý dữ liệu | `nodes.py` |
+| **Pipeline** | Danh sách node, nối nhau bằng tên dữ liệu vào/ra | `pipeline.py` |
+| **Catalog** | Bảng tra: tên dữ liệu → file, định dạng | `conf/base/catalog.yml` |
+| **Parameters** | Các con số có thể chỉnh, truyền vào node bằng `params:<nhóm>` | `conf/base/parameters*.yml` |
+
+Node A xuất ra dữ liệu tên `X`, node B nhận `X` thì Kedro tự biết B chạy sau A. Dữ liệu không có trong catalog chỉ nằm trong RAM và mất khi chạy xong.
+
+### Từng pipeline làm gì
+
+| Pipeline | Hàm trong `nodes.py` | Đọc | Ghi |
+|---|---|---|---|
+| `data_processing` | `clean_data` | `netflix_raw` | `netflix_clean` |
+| `feature_engineering` | `create_features`, `split_data` | `netflix_clean` | `model_features`, `X_train`, `X_test`, `y_train`, `y_test` |
+| `statistics` | `data_quality`, `target_distribution`, `describe_numeric`, `describe_categorical`, `churn_rate_by_feature`, `target_association` | `netflix_raw` | 6 file `stats_*` |
+| `visualization` | `plot_eda` (gọi 5 hàm `plot_*`) | `netflix_clean` | `eda_figures` |
+| `training` | `compare_models`, `train_best_model` | `X_train`, `y_train` | `model_comparison`, `classifier` |
+| `evaluation` | `evaluate_model`, `evaluate_all_models`, `evaluate_by_segment`, `compute_feature_importance`, `plot_evaluation` | `classifier`, `X_test`, `y_test`, `model_comparison` | `metrics`, `model_comparison_test`, `metrics_by_segment`, `feature_importance`, `evaluation_figures` |
+| `inference` | `predict_churn` (dùng lại `clean_data`, `create_features`) | `new_customers`, `classifier` | `predictions` |
+
+Hai pipeline ghép sẵn trong `pipeline_registry.py`:
+- **`kedro run`** (mặc định) = `data_processing` + `feature_engineering` + `training` + `evaluation`.
+- **`eda`** = `data_processing` + `statistics` + `visualization`.
+
+### Dữ liệu trong catalog
+
+| Tên | File | Tạo bởi |
+|---|---|---|
+| `netflix_raw` | `data/01_raw/netflix_customer_churn.csv` | dữ liệu gốc |
+| `netflix_clean` | `data/03_primary/netflix_clean.parquet` | `clean_data` |
+| `model_features` | `data/04_feature/model_features.parquet` | `create_features` |
+| `X_train`, `X_test`, `y_train`, `y_test` | `data/05_model_input/*.parquet` | `split_data` |
+| `classifier` | `data/06_models/classifier.pkl/<thời gian>/` (mỗi lần chạy một phiên bản) | `train_best_model` |
+| `model_comparison` | `data/08_reporting/training/model_comparison.csv` | `compare_models` |
+| `metrics` | `data/08_reporting/metrics.json` | `evaluate_model` |
+| `model_comparison_test` | `data/08_reporting/evaluation/model_comparison_test.csv` | `evaluate_all_models` |
+| `metrics_by_segment`, `feature_importance` | `data/08_reporting/evaluation/*.csv` | `evaluate_by_segment`, `compute_feature_importance` |
+| `evaluation_figures` | `data/08_reporting/evaluation/figures/` | `plot_evaluation` |
+| `eda_figures` | `data/08_reporting/figures/eda/` | `plot_eda` |
+| `stats_*` (6 file) | `data/08_reporting/statistics/` | các node của `statistics` |
+| `new_customers` | `data/01_raw/new_customers.csv` | bạn tự cung cấp, xem [Bước 7](#bước-7-triển-khai) |
+| `predictions` | `data/07_model_output/predictions.csv` | `predict_churn` |
+
+### Tham số
+
+| File | Chứa |
+|---|---|
+| `parameters.yml` | `model_options` (tỉ lệ chia train/test, `random_state`) và `decision.threshold` (ngưỡng quyết định) |
+| `parameters_data_processing.yml` | tên cột id và cột mục tiêu |
+| `parameters_feature_engineering.yml` | cột bị bỏ, cột lấy log, ngưỡng 30 ngày và 4 hồ sơ |
+| `parameters_training.yml` | số fold, chỉ số xếp hạng, danh sách mô hình ứng viên và siêu tham số |
+| `parameters_evaluation.yml` | cột dùng để phân tích theo nhóm, số lần xáo trộn khi tính độ quan trọng |
+| `parameters_statistics.yml`, `parameters_visualization.yml` | tên cột, số nhóm chia, mức ý nghĩa thống kê |
+| `parameters_inference.yml` | tên cột id trong kết quả dự đoán |
+
+### Xử lý dữ liệu cho mô hình nằm ở đâu
+
+Ba chỗ, theo đúng thứ tự dữ liệu đi qua:
+
+1. **Làm sạch:** `clean_data` trong [`data_processing/nodes.py`](src/netflix/pipelines/data_processing/nodes.py).
+2. **Tạo feature và chia dữ liệu:** `create_features` và `split_data` trong [`feature_engineering/nodes.py`](src/netflix/pipelines/feature_engineering/nodes.py).
+3. **Mã hoá chữ thành số và chuẩn hoá:** nằm **trong mô hình**, ở hàm `_make_pipeline` của [`training/nodes.py`](src/netflix/pipelines/training/nodes.py). Cố ý đặt ở đây để các con số chuẩn hoá chỉ học từ phần train, tránh rò rỉ thông tin của tập test.
+
+Khi chấm khách mới (pipeline `inference` và API), hệ thống dùng lại đúng `clean_data` và `create_features`, nên khách mới được xử lý giống hệt dữ liệu huấn luyện.
+
+### Muốn làm X thì sửa ở đâu
+
+| Muốn | Sửa |
+|---|---|
+| Đổi tỉ lệ train/test | `model_options.test_size` trong `parameters.yml` |
+| Bỏ hoặc giữ một cột, đổi ngưỡng 30 ngày hoặc 4 hồ sơ | `parameters_feature_engineering.yml` |
+| Thêm một feature mới | hàm `create_features` trong `feature_engineering/nodes.py` |
+| Thêm một mô hình | `ESTIMATORS` trong `training/nodes.py` **và** một mục trong `parameters_training.yml` |
+| Đổi số fold hoặc chỉ số xếp hạng mô hình | `cv_folds`, `scoring` trong `parameters_training.yml` |
+| Đổi ngưỡng quyết định (mặc định 0,5) | `decision.threshold` trong `parameters.yml` |
+| Phân tích theo nhóm khác (thay `subscription_type`) | `segment_column` trong `parameters_evaluation.yml` |
+| Đổi nơi lưu file hoặc thêm dữ liệu lưu ra đĩa | `conf/base/catalog.yml` |
+| Thêm một pipeline mới | `kedro pipeline create <tên>`, rồi thêm vào `pipeline_registry.py` |
+| Đổi các trường API nhận vào | lớp `Customer` trong `serving/app.py` |
+| Thêm test | `tests/pipelines/<tên pipeline>/test_pipeline.py` |
+
+## Luồng dữ liệu
+
+```
+netflix_raw (CSV)
+   │ clean_data                                   [data_processing]
+   ▼
+netflix_clean ─────────────► statistics, visualization   (kedro run --pipeline eda)
+   │ create_features                              [feature_engineering]
+   ▼
+model_features
+   │ split_data
+   ▼
+X_train, X_test, y_train, y_test
+   │ compare_models → train_best_model            [training]
+   ▼
+model_comparison, classifier
+   │ evaluate_model, evaluate_all_models,         [evaluation]
+   │ evaluate_by_segment, compute_feature_importance, plot_evaluation
+   ▼
+metrics, model_comparison_test, metrics_by_segment, feature_importance, evaluation_figures
+
+new_customers ─► clean_data ─► create_features ─► predict_churn ─► predictions   [inference]
+```
+
+## Chi tiết từng bước
+
+### Bước 1: Dữ liệu
+`data/01_raw/netflix_customer_churn.csv`: 5.000 dòng, 14 cột, mỗi khách hàng một dòng.
 
 | Nhóm | Cột |
 |---|---|
@@ -16,237 +218,71 @@ Các cột trong dữ liệu gốc:
 | Hành vi | `watch_hours`, `avg_watch_time_per_day`, `last_login_days`, `device`, `favorite_genre` |
 | Mục tiêu | `churned` |
 
-Tài liệu Kedro: https://docs.kedro.org
+Lưu ý về nguồn dữ liệu (suy ra từ chính dữ liệu, chưa có tài liệu gốc xác nhận):
+- `avg_watch_time_per_day` luôn bằng `watch_hours / (last_login_days + 1)`, nên tên cột dễ gây hiểu nhầm.
+- Phí hàng tháng gắn cứng với gói (Basic 8,99, Standard 13,99, Premium 17,99), và các cột phân bố rất đều. **Nhiều khả năng đây là dữ liệu tổng hợp**, không phải dữ liệu thật của Netflix, nên điểm số rất cao của mô hình không thể coi là chất lượng khi dùng cho khách hàng thật.
+- Không có cột thời gian, nên không thể chia train/test theo thời gian.
 
-## Cài đặt và chạy nhanh
+### Bước 2: Statistics (`statistics`)
+Sáu node, mỗi node trả lời một câu hỏi và ghi file vào `data/08_reporting/statistics/`: chất lượng dữ liệu, cân bằng lớp, mô tả cột số, mô tả cột chữ, tỉ lệ churn theo nhóm, mối liên hệ với churn (Spearman, chi-square).
 
-```bash
-pip install -r requirements.txt   # cài thư viện
-kedro run                         # chạy toàn bộ pipeline
-kedro run --pipeline data_processing   # chạy riêng một pipeline
-pytest                            # chạy test
+Phát hiện chính: không thiếu giá trị, không trùng; hai lớp cân bằng (50,3% rời); `watch_hours`, `last_login_days`, `avg_watch_time_per_day` liên hệ mạnh với churn; `age`, `gender`, `region`, `device`, `favorite_genre` **không** liên quan (p-value > 0,05).
+
+### Bước 3: Tiền xử lý (`data_processing`, `feature_engineering`)
+- `clean_data`: bỏ khách trùng, dòng thiếu, giá trị vô lý; ép kiểu. Với dữ liệu này không loại dòng nào.
+- `create_features` (tham số trong `parameters_feature_engineering.yml`):
+  - bỏ `customer_id` và 5 cột không liên quan ở bước 2;
+  - `log1p` cho `watch_hours` và `avg_watch_time_per_day` (rất lệch phải);
+  - `is_inactive` (không đăng nhập quá 30 ngày) và `has_many_profiles` (từ 4 hồ sơ), vì churn đổi mạnh quanh hai điểm đó.
+- `split_data`: chia 80/20, có `stratify` theo `churned`.
+- **Mã hoá chữ và chuẩn hoá số không làm ở đây**, mà nằm trong mô hình (bước 5), để chỉ học từ phần train và tránh rò rỉ dữ liệu test (*data leakage*).
+
+### Bước 4: Visualization (`visualization`)
+Năm biểu đồ lưu vào `data/08_reporting/figures/eda/`: cân bằng lớp, phân phối cột số theo lớp, tỉ lệ churn theo nhóm (cột số và cột chữ), ma trận tương quan. Biểu đồ vẽ bằng `matplotlib.figure.Figure` nên không cần giao diện đồ hoạ.
+
+### Bước 5: Model building (`training`)
+- `compare_models`: kiểm tra chéo (5 phần, theo ROC-AUC) cho từng ứng viên trong `parameters_training.yml`: hồi quy logistic, rừng ngẫu nhiên, gradient boosting, LightGBM và SVM. Ghi bảng xếp hạng vào `data/08_reporting/training/model_comparison.csv`, kèm `overfit_gap` để phát hiện học thuộc lòng.
+- `train_best_model`: lấy ứng viên điểm cao nhất, huấn luyện lại trên toàn bộ tập train, lưu `classifier.pkl` (mỗi lần chạy một phiên bản).
+- Muốn thêm mô hình: thêm vào `ESTIMATORS` trong `training/nodes.py` và thêm một mục trong `parameters_training.yml`. Mô hình phải có `predict_proba`, và nếu thư viện nằm ngoài scikit-learn (như `lightgbm`) thì thêm vào cả `requirements.txt` và `requirements-serving.txt`.
+
+### Bước 6: Evaluation (`evaluation`)
+Tập test chỉ dùng ở bước này, một lần. Kết quả vào `data/08_reporting/`:
+- `metrics.json`: điểm của **mô hình đã chọn** (trường `model` cho biết là mô hình nào): accuracy, precision, recall, F1, ROC-AUC, kèm `baseline_accuracy` (độ chính xác nếu luôn đoán lớp phổ biến);
+- `evaluation/model_comparison_test.csv`: **bảng tham khảo** chấm cả các mô hình ứng viên trên tập test. Mô hình đã chọn là dòng `selected = True`, chọn ở bước 5 bằng kiểm tra chéo. **Không dùng bảng này để chọn lại mô hình**: chọn theo điểm test thì tập test bị dùng để quyết định và điểm báo cáo sẽ lạc quan hơn thực tế. Vì vậy các dòng xếp theo thứ hạng kiểm tra chéo (`cv_rank`), không xếp theo điểm test;
+- `evaluation/metrics_by_segment.csv`: điểm theo từng gói đăng ký;
+- `evaluation/feature_importance.csv`: permutation importance;
+- `evaluation/figures/`: ma trận nhầm lẫn, đường ROC, độ quan trọng feature.
+
+Ngưỡng quyết định (`decision.threshold` trong `parameters.yml`, mặc định 0,5) dùng chung cho đánh giá, chấm điểm hàng loạt và API. Chọn ngưỡng là quyết định kinh doanh, xem mục 6.6 trong notebook 06.
+
+### Bước 7: Triển khai
+**Chấm điểm hàng loạt** (`inference`): đọc `data/01_raw/new_customers.csv` (cùng cột với file gốc, có hoặc không có `churned`), đi qua đúng `clean_data` và `create_features` như lúc huấn luyện, ghi `data/07_model_output/predictions.csv`. Tạo file mẫu 20 khách để thử:
+
+```powershell
+python -c "import pandas as pd; df = pd.read_csv('data/01_raw/netflix_customer_churn.csv').sample(20, random_state=1); df.drop(columns='churned').to_csv('data/01_raw/new_customers.csv', index=False)"
+kedro run --pipeline inference
 ```
 
-## Cấu trúc dự án
+**API** (`src/netflix/serving/app.py`, FastAPI): tự nạp phiên bản mô hình mới nhất trong `data/06_models/`, hoặc file chỉ định bởi biến môi trường `CHURN_MODEL_PATH`.
 
-```
-netflix/
-├── conf/
-│   ├── base/
-│   │   ├── catalog.yml                     <- KHAI BÁO dữ liệu: file nào, định dạng gì, ở đâu
-│   │   ├── parameters.yml                  <- tham số dùng chung (test_size, random_state...)
-│   │   └── parameters_data_processing.yml  <- tham số riêng của pipeline data_processing
-│   ├── local/
-│   │   └── credentials.yml                 <- mật khẩu, API key. KHÔNG commit
-│   └── README.md
-├── data/
-│   ├── 01_raw/               <- dữ liệu gốc, chỉ đọc, không bao giờ sửa
-│   ├── 02_intermediate/      <- đã đổi kiểu, làm sạch sơ bộ
-│   ├── 03_primary/           <- bảng chuẩn, sạch
-│   ├── 04_feature/           <- bảng feature
-│   ├── 05_model_input/       <- dữ liệu đưa vào model
-│   ├── 06_models/            <- model đã train (.pkl)
-│   ├── 07_model_output/      <- kết quả dự đoán
-│   └── 08_reporting/         <- metrics, biểu đồ
-├── notebooks/                <- notebook khám phá dữ liệu (EDA), thử nghiệm
-├── src/netflix/
-│   ├── __init__.py
-│   ├── __main__.py           <- cho phép chạy `python -m netflix`
-│   ├── pipeline_registry.py  <- tự tìm và đăng ký pipeline
-│   ├── settings.py           <- cấu hình framework Kedro
-│   └── pipelines/            <- mỗi pipeline là một thư mục con
-│       └── data_processing/
-│           ├── __init__.py
-│           ├── nodes.py      <- các hàm xử lý
-│           └── pipeline.py   <- nối các hàm thành pipeline
-├── tests/
-│   ├── test_run.py
-│   └── pipelines/data_processing/test_pipeline.py
-├── pyproject.toml
-├── requirements.txt
-└── .gitignore
+```powershell
+uvicorn netflix.serving.app:app --reload      # rồi mở http://127.0.0.1:8000/docs
 ```
 
-## Luồng dữ liệu
+| Đường dẫn | Việc |
+|---|---|
+| `GET /health` | kiểm tra dịch vụ và xem mô hình đang dùng |
+| `POST /predict` | một khách hàng → xác suất rời và quyết định |
+| `POST /predict/batch` | danh sách khách hàng |
 
-Kedro xây đồ thị từ tên dataset: node nào xuất ra `X` thì node nào nhận `X` sẽ chạy sau nó.
+Dữ liệu gửi lên được kiểm tra bằng Pydantic (ví dụ `subscription_type` chỉ nhận Basic/Standard/Premium); dữ liệu sai trả mã 422. Trang `/docs` cho phép thử trực tiếp trên trình duyệt.
 
+**Docker** (chạy sau `kedro run`, vì ảnh chứa mô hình mới nhất):
+
+```powershell
+docker build -t netflix-churn .
+docker run -p 8000:8000 netflix-churn
 ```
-netflix_raw (CSV, 01_raw)
-   │  [nodes.py] làm sạch
-   ▼
-netflix_clean (Parquet, 03_primary)
-   │  [nodes.py] tách train/test + huấn luyện
-   ▼
-classifier (Pickle, 06_models, có version)  ──►  metrics (JSON, 08_reporting)
-```
-
-Các dataset trên đã được khai báo trong `conf/base/catalog.yml`. Phần node và pipeline xử lý chúng **chưa được viết** (xem mục "Việc cần làm tiếp").
-
----
-
-## Chi tiết từng thư mục và file
-
-### `conf/` – Cấu hình (không chứa code)
-
-Kedro gộp `conf/base` với `conf/local`; giá trị trong `local` ghi đè `base`. Thiết lập này nằm ở `CONFIG_LOADER_ARGS` trong `settings.py`.
-
-#### `conf/base/catalog.yml`
-- **Tác dụng:** danh sách mọi dataset của dự án: tên, loại, đường dẫn. Node chỉ gọi dataset theo tên, không biết file nằm ở đâu.
-- **Nên viết:** mỗi dữ liệu đi vào hoặc ra khỏi pipeline cần một mục. Dataset không khai báo sẽ chỉ nằm trong RAM và mất khi chạy xong.
-- **Hiện có:**
-
-| Tên | Loại | Đường dẫn | Ghi chú |
-|---|---|---|---|
-| `netflix_raw` | `pandas.CSVDataset` | `data/01_raw/netflix_customer_churn.csv` | dữ liệu gốc |
-| `netflix_clean` | `pandas.ParquetDataset` | `data/03_primary/netflix_clean.parquet` | bảng sạch |
-| `classifier` | `pickle.PickleDataset` | `data/06_models/classifier.pkl` | `versioned: true`, mỗi lần chạy lưu một bản theo timestamp |
-| `metrics` | `json.JSONDataset` | `data/08_reporting/metrics.json` | kết quả đánh giá |
-
-- **Gợi ý thêm:** `X_train`, `X_test`, `y_train`, `y_test` (`05_model_input`), `predictions` (`07_model_output`), và các bảng trung gian ở `02_intermediate`/`04_feature` nếu muốn lưu để debug.
-
-#### `conf/base/parameters.yml`
-- **Tác dụng:** tham số dùng chung toàn dự án. Trong code truy cập bằng `params:model_options` hoặc `params:model_options.test_size`.
-- **Nên viết:** mọi con số có thể muốn chỉnh (tỉ lệ chia, seed, siêu tham số, ngưỡng lọc) thay vì gõ cứng trong code.
-- **Hiện có:** nhóm `model_options` gồm `test_size: 0.2`, `random_state: 42`, `max_features: 5000`, `C: 1.0`.
-- **Lưu ý:** `max_features` chỉ có nghĩa nếu dùng bộ vector hoá văn bản (TF-IDF…). Dữ liệu hiện tại không có cột văn bản, nên có thể bỏ nếu không dùng.
-
-#### `conf/base/parameters_data_processing.yml`
-- **Tác dụng:** tham số riêng của pipeline `data_processing`, do Kedro sinh ra khi tạo pipeline.
-- **Nên viết:** các tham số chỉ pipeline này dùng, ví dụ danh sách cột cần bỏ, ngưỡng loại outlier cho `age`. File hiện chỉ có chú thích mẫu.
-
-#### `conf/local/credentials.yml`
-- **Tác dụng:** chứa thông tin nhạy cảm (mật khẩu DB, khoá S3, API key). Được `.gitignore` bỏ qua.
-- **Nên viết:** chỉ khi dữ liệu nằm ở nguồn cần xác thực. Catalog tham chiếu bằng `credentials: tên_khoá`. Dữ liệu CSV cục bộ hiện tại **không cần** file này.
-- **Lưu ý:** tuyệt đối không commit. Có thể ghi ví dụ khoá cần thiết (không kèm giá trị thật) vào `conf/README.md` để người khác tự tạo.
-
-#### `conf/README.md`
-Ghi chú mặc định của Kedro. Mục "Instructions" còn trống, có thể viết hướng dẫn tạo `credentials.yml` tại đây.
-
----
-
-### `data/` – Dữ liệu (không commit)
-
-Các thư mục được đánh số theo [quy ước tầng dữ liệu của Kedro](https://docs.kedro.org/en/stable/getting_started/kedro_concepts/#data-layers). Dữ liệu chỉ đi từ số nhỏ lên số lớn. Mỗi thư mục có `.gitkeep` để Git giữ thư mục rỗng.
-
-| Thư mục | Nội dung | Ví dụ trong dự án này |
-|---|---|---|
-| `01_raw` | Dữ liệu gốc, chỉ đọc, không sửa | `netflix_customer_churn.csv` |
-| `02_intermediate` | Đổi kiểu dữ liệu, đổi tên cột, làm sạch sơ bộ | ép `churned` về `int`, chuẩn hoá chuỗi |
-| `03_primary` | Bảng chuẩn, sạch, một dòng một khách hàng | `netflix_clean.parquet` |
-| `04_feature` | Bảng feature | `watch_hours` theo nhóm, mã hoá `gender`, `device`… |
-| `05_model_input` | Dữ liệu đưa thẳng vào model | `X_train`, `X_test`, `y_train`, `y_test` |
-| `06_models` | Model đã huấn luyện | `classifier.pkl` |
-| `07_model_output` | Kết quả dự đoán | xác suất churn của từng khách hàng |
-| `08_reporting` | Metrics, biểu đồ | `metrics.json` (accuracy, F1, ROC-AUC…) |
-
----
-
-### `notebooks/`
-- **Tác dụng:** nơi khám phá dữ liệu và thử ý tưởng nhanh. Chạy bằng `kedro jupyter lab`, có sẵn biến `context`, `catalog`, `pipelines`, `session`.
-- **Nên viết:** EDA (phân phối `churned`, tương quan, giá trị thiếu). Khi ý tưởng ổn, chuyển code sang `nodes.py`; không để logic chính chỉ nằm trong notebook.
-
----
-
-### `src/netflix/` – Mã nguồn
-
-#### `__init__.py`
-Đánh dấu thư mục là package Python và khai báo `__version__` (pyproject đọc phiên bản từ đây).
-
-#### `__main__.py`
-Điểm vào để chạy `python -m netflix` hoặc lệnh `netflix` sau khi đóng gói. **Không cần sửa.**
-
-#### `pipeline_registry.py`
-- **Tác dụng:** trả về dict `{tên: Pipeline}` cho `kedro run`.
-- **Cách hoạt động:** `find_pipelines()` tự quét `pipelines/*` và gọi `create_pipeline()` của từng thư mục. `__default__` là tổng của mọi pipeline, chính là thứ chạy khi gõ `kedro run`.
-- **Nên viết:** thường giữ nguyên. Chỉ sửa khi muốn pipeline chạy mặc định khác, ví dụ `__default__ = data_processing + training`.
-
-#### `settings.py`
-- **Tác dụng:** cấu hình framework: hooks, config loader, session store…
-- **Hiện có:** chỉ `CONFIG_LOADER_ARGS` (`base_env="base"`, `default_run_env="local"`); các mục còn lại đang bị comment.
-- **Nên viết:** đăng ký `HOOKS` nếu cần (log, kiểm tra dữ liệu). Nếu không cần thì giữ nguyên.
-
-#### `pipelines/` – mỗi pipeline một thư mục con
-
-Tạo pipeline mới bằng `kedro pipeline create <tên>`. Kedro sinh sẵn thư mục, file test và file tham số tương ứng.
-
-##### `pipelines/data_processing/nodes.py`
-- **Tác dụng:** các **node** – hàm Python thuần, nhận đầu vào, trả đầu ra, không đọc hay ghi file.
-- **Nên viết:** mỗi hàm làm một việc. Hiện file mới chỉ có docstring. Ví dụ:
-  - `clean_data(netflix_raw) -> DataFrame`: bỏ trùng `customer_id`, xử lý giá trị thiếu, ép kiểu, bỏ giá trị bất thường (tuổi âm, `monthly_fee` ≤ 0).
-  - `split_data(netflix_clean, params) -> X_train, X_test, y_train, y_test`: chia theo `test_size`, `random_state`.
-  - `train_model(X_train, y_train, params) -> classifier`: huấn luyện với `C`.
-  - `evaluate_model(classifier, X_test, y_test) -> dict`: trả về metrics.
-- **Quy tắc:** không đọc đường dẫn trong node (việc của catalog), không gõ cứng tham số (việc của `parameters.yml`), không dùng `print` (ruff đang chặn `T201`), hãy dùng `logging`.
-
-##### `pipelines/data_processing/pipeline.py`
-- **Tác dụng:** nối các node thành pipeline bằng cách khai báo tên dataset vào/ra.
-- **Hiện có:** `create_pipeline()` trả về `Pipeline([])`, nên **hiện pipeline rỗng**, chưa chạy gì.
-- **Nên viết:**
-
-```python
-from kedro.pipeline import Node, Pipeline
-
-from .nodes import clean_data, split_data
-
-
-def create_pipeline(**kwargs) -> Pipeline:
-    return Pipeline(
-        [
-            Node(clean_data, inputs="netflix_raw", outputs="netflix_clean",
-                 name="clean_data"),
-            Node(split_data, inputs=["netflix_clean", "params:model_options"],
-                 outputs=["X_train", "X_test", "y_train", "y_test"],
-                 name="split_data"),
-        ]
-    )
-```
-
-##### `pipelines/data_processing/__init__.py`
-Để trống là đủ. Đây là file giúp `find_pipelines()` nhận ra thư mục là một pipeline.
-
-##### `pipelines/__init__.py`
-Để trống.
-
----
-
-### `tests/`
-
-Cấu trúc thư mục test phản chiếu cấu trúc `src/`. Tên file phải bắt đầu bằng `test_`.
-
-#### `tests/test_run.py`
-- **Tác dụng:** test mẫu kiểm tra `kedro run` báo lỗi "Pipeline contains no nodes".
-- **Lưu ý:** test này **sẽ fail** ngay khi pipeline có node, vì nó mong đợi pipeline rỗng. Hãy sửa lại thành test chạy pipeline thành công hoặc xoá đi khi viết xong pipeline đầu tiên.
-
-#### `tests/pipelines/data_processing/test_pipeline.py`
-- **Tác dụng:** test cho pipeline `data_processing`. Hiện chỉ có docstring.
-- **Nên viết:** test riêng từng node với DataFrame nhỏ tự tạo, ví dụ `clean_data` có bỏ trùng `customer_id` không, `split_data` có đúng tỉ lệ 80/20 không. Chạy bằng `pytest`; ngưỡng coverage chỉnh ở `[tool.coverage.report]` (hiện `fail_under = 0`).
-
----
-
-### File gốc
-
-#### `pyproject.toml`
-Cấu hình trung tâm: tên và phiên bản package, dependency, thông tin `[tool.kedro]`, cấu hình `pytest`/coverage và `ruff` (độ dài dòng 88, bật các rule `F, W, E, I, UP, PL, T201`). Cũng khai báo lệnh `netflix` và nhóm `dev` (pytest, ruff).
-- **Nên sửa:** khi thêm dependency, đổi cấu hình lint/test.
-
-#### `requirements.txt`
-Danh sách thư viện cài bằng `pip install -r requirements.txt`. Hiện chỉ có `kedro`, `ipython`, `jupyterlab`, `notebook`.
-- **Cần bổ sung:** catalog đang dùng CSV/Parquet/Pickle/JSON, nên cần thêm thư viện sau để `kedro run` chạy được:
-
-```
-kedro-datasets[pandas-csvdataset,pandas-parquetdataset]
-pandas
-pyarrow
-scikit-learn
-```
-
-  Nếu dùng `ruff` hoặc `pytest`, cài thêm bằng `pip install -e ".[dev]"`.
-
-#### `.gitignore`
-Chặn `data/`, `conf/local/`, `__pycache__`, v.v. Không xoá dòng nào (xem quy tắc dưới).
-
----
 
 ## Quy tắc làm việc
 
@@ -254,29 +290,28 @@ Chặn `data/`, `conf/local/`, `__pycache__`, v.v. Không xoá dòng nào (xem q
 * Không commit dữ liệu (`data/`) lên repository.
 * Không commit credentials hay cấu hình cục bộ; để tất cả trong `conf/local/`.
 * Kết quả phải tái lập được: mọi tham số nằm trong `conf/`, có `random_state` cố định.
-* Node là hàm thuần, chỉ làm việc với dữ liệu truyền vào, mọi I/O do catalog xử lý.
+* Node là hàm thuần, chỉ làm việc với dữ liệu truyền vào; mọi việc đọc/ghi file do catalog xử lý.
+* Mã hoá/chuẩn hoá nằm trong mô hình, không làm trước khi chia train/test.
+* Đổi tham số trong `conf/` rồi chạy lại; không sửa số trực tiếp trong code.
 
-## Việc cần làm tiếp
+## Kiểm thử và chất lượng mã
 
-- [ ] Viết `clean_data` trong `nodes.py` và nối vào `pipeline.py` (`netflix_raw` → `netflix_clean`).
-- [ ] Thêm các dataset mới vào `catalog.yml` (`X_train`, `X_test`, …).
-- [ ] Tạo pipeline `training` (`kedro pipeline create training`): huấn luyện và đánh giá, xuất `classifier` và `metrics`.
-- [ ] Bổ sung thư viện vào `requirements.txt` (`pandas`, `pyarrow`, `scikit-learn`, `kedro-datasets`).
-- [ ] Viết test cho từng node; sửa hoặc xoá `tests/test_run.py`.
-- [ ] Dọn `max_features` trong `parameters.yml` nếu không dùng.
+```powershell
+pytest                                  # toàn bộ test
+pytest --deselect tests/test_run.py     # bỏ test chạy cả pipeline (không ghi vào data/)
+ruff check src tests                    # kiểm tra lỗi và phong cách
+```
+
+Test dùng dữ liệu giả có sẵn quy luật (`tests/conftest.py`) và đọc đúng các file tham số trong `conf/base`, nên đổi cấu hình mà làm hỏng code thì test báo ngay.
 
 ## Làm việc với notebook
 
-> Dùng `kedro jupyter notebook`, `kedro jupyter lab` hoặc `kedro ipython` để có sẵn các biến `context`, `session`, `catalog`, `pipelines`.
+Có hai cách mở notebook:
+- **VS Code:** mở file `.ipynb`, bấm **Select Kernel** (góc trên bên phải) và chọn `C:\ML\.venv\Scripts\python.exe`.
+- **Terminal:** `kedro jupyter lab`, tự dùng đúng môi trường.
 
-```bash
-kedro jupyter notebook   # Jupyter Notebook
-kedro jupyter lab        # JupyterLab
-kedro ipython            # IPython
-```
+Ô code đầu tiên của mỗi notebook tự kiểm tra kernel đã đủ thư viện chưa và tự tìm thư mục dự án; nếu thiếu gì nó in ra lệnh cài. Để xoá kết quả (output) khỏi notebook trước khi commit, dùng [`nbstripout`](https://github.com/kynan/nbstripout): `pip install nbstripout` rồi `nbstripout --install`. Kết quả vẫn giữ nguyên trên máy bạn.
 
-Jupyter, JupyterLab và IPython đã nằm trong `requirements.txt`. Để xoá output notebook trước khi commit, dùng [`nbstripout`](https://github.com/kynan/nbstripout) (`nbstripout --install`); output vẫn giữ nguyên ở máy bạn.
-
-## Đóng gói dự án
+## Đóng gói dự án Kedro
 
 [Hướng dẫn đóng gói dự án Kedro](https://docs.kedro.org/en/stable/deploy/package_a_project/#package-an-entire-kedro-project)

@@ -1,0 +1,8 @@
+kedro~=1.7.0
+pandas
+numpy
+scikit-learn
+pyyaml
+fastapi
+uvicorn
+lightgbm

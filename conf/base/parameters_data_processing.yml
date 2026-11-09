@@ -1,5 +1,3 @@
-# This is a boilerplate parameters config generated for pipeline 'data_processing'
-# using Kedro 1.7.0.
-#
-# Documentation for this file format can be found in "Parameters"
-# Link: https://docs.kedro.org/en/1.7.0/configuration/parameters.html
+data_processing:
+  id_column: customer_id
+  target_column: churned

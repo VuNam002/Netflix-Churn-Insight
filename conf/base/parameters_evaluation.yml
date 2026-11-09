@@ -1,0 +1,4 @@
+evaluation:
+  segment_column: subscription_type   # metrics are also reported per level of this column
+  permutation_repeats: 10             # shuffles per column for feature importance
+  random_state: 42

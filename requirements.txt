@@ -2,3 +2,15 @@ ipython>=8.10
 jupyterlab>=3.0
 notebook
 kedro~=1.7.0
+kedro-datasets[pandas-csvdataset,pandas-parquetdataset,pickle-pickledataset,json-jsondataset,matplotlib-matplotlibdataset]
+pandas
+pyarrow
+scikit-learn
+lightgbm
+scipy
+matplotlib
+pyyaml
+# Serving (step 7)
+fastapi
+uvicorn
+httpx

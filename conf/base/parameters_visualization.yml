@@ -1,0 +1,4 @@
+visualization:
+  id_column: customer_id
+  target_column: churned
+  numeric_bins: 5   # numeric columns are cut into this many equal-size groups
