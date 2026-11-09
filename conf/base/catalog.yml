@@ -1,0 +1,16 @@
+netflix_raw:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/netflix_customer_churn.csv
+
+netflix_clean:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/netflix_clean.parquet
+
+classifier:
+  type: pickle.PickleDataset
+  filepath: data/06_models/classifier.pkl
+  versioned: true          # mỗi lần chạy lưu một phiên bản mới theo timestamp
+
+metrics:
+  type: json.JSONDataset
+  filepath: data/08_reporting/metrics.json
