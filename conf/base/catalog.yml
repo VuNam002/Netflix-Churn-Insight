@@ -70,6 +70,31 @@ model_comparison:
   type: pandas.CSVDataset
   filepath: data/08_reporting/training/model_comparison.csv
 
+# Hyperparameters of the selected model after grid search, and every combination tried.
+best_hyperparameters:
+  type: json.JSONDataset
+  filepath: data/08_reporting/training/best_hyperparameters.json
+
+tuning_results:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/training/tuning_results.csv
+
+# Every candidate, fitted on the full train set, one folder per model:
+#   data/06_models/all_models/<model>/model.pkl   the fitted pipeline
+#   data/06_models/all_models/<model>/info.json   hyperparameters, selected or not, when
+# Each run overwrites these. `classifier` below is the selected one, versioned.
+trained_models:
+  type: partitions.PartitionedDataset
+  path: data/06_models/all_models
+  dataset: pickle.PickleDataset
+  filename_suffix: .pkl
+
+trained_models_info:
+  type: partitions.PartitionedDataset
+  path: data/06_models/all_models
+  dataset: json.JSONDataset
+  filename_suffix: .json
+
 # --- Step 6: evaluation -----------------------------------------------------
 # Every candidate scored on the test set. Reference only: the model is chosen by
 # cross-validation (model_comparison), never by this table.

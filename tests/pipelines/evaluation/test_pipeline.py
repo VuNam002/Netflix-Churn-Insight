@@ -8,19 +8,13 @@ from netflix.pipelines.evaluation.nodes import (
     evaluate_model,
     plot_evaluation,
 )
-from netflix.pipelines.training.nodes import compare_models
+from netflix.pipelines.training.nodes import select_best_model
 
 PARAMS = {
     "segment_column": "subscription_type",
     "permutation_repeats": 3,
     "random_state": 0,
 }
-
-
-@pytest.fixture
-def model_comparison(split, model_options, training_params):
-    X_train, _, y_train, _ = split
-    return compare_models(X_train, y_train, model_options, training_params)
 
 
 def test_evaluate_model_reports_which_model_it_scored(split, classifier, decision):
@@ -32,19 +26,12 @@ def test_evaluate_model_reports_which_model_it_scored(split, classifier, decisio
 
 
 def test_evaluate_all_models_covers_every_candidate(
-    split, model_comparison, model_options, training_params, decision
+    split, model_comparison, tuned, trained, training_params, decision
 ):
-    X_train, X_test, y_train, y_test = split
+    _, X_test, _, y_test = split
 
     table = evaluate_all_models(
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-        model_comparison,
-        model_options,
-        training_params,
-        decision,
+        trained[0], X_test, y_test, model_comparison, tuned[0], decision
     )
 
     assert set(table["model"]) == set(training_params["candidates"])
@@ -53,19 +40,12 @@ def test_evaluate_all_models_covers_every_candidate(
 
 
 def test_selected_model_is_the_cross_validation_winner_not_the_test_winner(
-    split, model_comparison, model_options, training_params, decision
+    split, model_comparison, tuned, trained, decision
 ):
-    X_train, X_test, y_train, y_test = split
+    _, X_test, _, y_test = split
 
     table = evaluate_all_models(
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-        model_comparison,
-        model_options,
-        training_params,
-        decision,
+        trained[0], X_test, y_test, model_comparison, tuned[0], decision
     )
 
     assert table["selected"].sum() == 1
@@ -149,3 +129,20 @@ def test_threshold_above_one_predicts_nobody_will_churn(split, classifier):
 
     assert metrics["true_positives"] + metrics["false_positives"] == 0
     assert metrics["recall"] == 0.0
+
+
+def test_selected_row_matches_the_headline_metrics(
+    split, model_comparison, tuned, trained, decision
+):
+    _, X_test, _, y_test = split
+    table = evaluate_all_models(
+        trained[0], X_test, y_test, model_comparison, tuned[0], decision
+    )
+    classifier = select_best_model(trained[0], tuned[0])
+
+    metrics = evaluate_model(classifier, X_test, y_test, decision)
+
+    selected = table[table["selected"]].iloc[0]
+    assert metrics["model"] == selected["model"]
+    assert metrics["roc_auc"] == pytest.approx(selected["roc_auc"], abs=1e-4)
+    assert metrics["recall"] == pytest.approx(selected["recall"], abs=1e-4)

@@ -9,7 +9,12 @@ import yaml
 
 from netflix.pipelines.data_processing.nodes import clean_data
 from netflix.pipelines.feature_engineering.nodes import create_features, split_data
-from netflix.pipelines.training.nodes import _make_pipeline
+from netflix.pipelines.training.nodes import (
+    _make_pipeline,
+    compare_models,
+    train_all_models,
+    tune_model,
+)
 
 CONF = Path(__file__).resolve().parents[1] / "conf" / "base"
 FEE = {"Basic": 8.99, "Standard": 13.99, "Premium": 17.99}
@@ -72,12 +77,31 @@ def decision() -> dict:
 
 @pytest.fixture
 def training_params() -> dict:
-    """Real config, but small models so the tests stay fast."""
+    """Real config, but small models and grids so the tests stay fast."""
     params = read_params("parameters_training.yml", "training")
     params["cv_folds"] = 3
     params["candidates"]["random_forest"]["n_estimators"] = 20
     params["candidates"]["gradient_boosting"]["n_estimators"] = 20
+    params["tuning"]["grids"] = {
+        model: {name: values[:2] for name, values in grid.items()}
+        for model, grid in params["tuning"]["grids"].items()
+    }
     return params
+
+
+@pytest.fixture
+def model_comparison(split, model_options, training_params) -> pd.DataFrame:
+    X_train, _, y_train, _ = split
+    return compare_models(X_train, y_train, model_options, training_params)
+
+
+@pytest.fixture
+def tuned(split, model_comparison, model_options, training_params):
+    """``(best_hyperparameters, tuning_results)`` from the real ``tune_model``."""
+    X_train, _, y_train, _ = split
+    return tune_model(
+        X_train, y_train, model_comparison, model_options, training_params
+    )
 
 
 @pytest.fixture
@@ -102,3 +126,10 @@ def classifier(split, model_options, training_params):
         model_options["random_state"],
     )
     return model.fit(X_train, y_train.iloc[:, 0])
+
+
+@pytest.fixture
+def trained(split, tuned, model_options, training_params):
+    """``(models, info)`` from the real ``train_all_models``."""
+    X_train, _, y_train, _ = split
+    return train_all_models(X_train, y_train, tuned[0], model_options, training_params)

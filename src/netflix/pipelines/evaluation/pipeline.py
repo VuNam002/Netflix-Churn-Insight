@@ -24,13 +24,11 @@ def create_pipeline(**kwargs) -> Pipeline:
             Node(
                 evaluate_all_models,
                 inputs=[
-                    "X_train",
-                    "y_train",
+                    "trained_models",
                     "X_test",
                     "y_test",
                     "model_comparison",
-                    "params:model_options",
-                    "params:training",
+                    "best_hyperparameters",
                     "params:decision",
                 ],
                 outputs="model_comparison_test",

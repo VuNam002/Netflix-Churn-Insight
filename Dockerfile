@@ -10,8 +10,9 @@ RUN pip install --no-cache-dir -r requirements-serving.txt
 
 COPY src ./src
 COPY conf/base ./conf/base
-# Only the trained model is needed at serving time, not the data.
-COPY data/06_models ./data/06_models
+# Only the selected model (classifier.pkl) is needed at serving time: not the data,
+# and not the other models in data/06_models/all_models.
+COPY data/06_models/classifier.pkl ./data/06_models/classifier.pkl
 
 # The app finds conf/ and data/ relative to src/, so run it from the source tree
 # instead of installing the package.

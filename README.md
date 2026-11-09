@@ -67,7 +67,9 @@ netflix/
 │   ├── 03_primary/           <- bảng chuẩn, sạch (netflix_clean)
 │   ├── 04_feature/           <- bảng feature (model_features)
 │   ├── 05_model_input/       <- X_train, X_test, y_train, y_test
-│   ├── 06_models/            <- model đã train (classifier.pkl, có phiên bản theo thời gian)
+│   ├── 06_models/            <- model đã train
+│   │   ├── classifier.pkl/       mô hình ĐƯỢC CHỌN, mỗi lần chạy một phiên bản theo thời gian (API dùng)
+│   │   └── all_models/<tên>/     MỌI mô hình, mỗi mô hình một thư mục: model.pkl + info.json
 │   ├── 07_model_output/      <- kết quả dự đoán (predictions.csv)
 │   └── 08_reporting/         <- metrics, bảng so sánh, biểu đồ
 ├── notebooks/                <- 02 đến 06: khám phá và học từng bước
@@ -116,8 +118,8 @@ Node A xuất ra dữ liệu tên `X`, node B nhận `X` thì Kedro tự biết 
 | `feature_engineering` | `create_features`, `split_data` | `netflix_clean` | `model_features`, `X_train`, `X_test`, `y_train`, `y_test` |
 | `statistics` | `data_quality`, `target_distribution`, `describe_numeric`, `describe_categorical`, `churn_rate_by_feature`, `target_association` | `netflix_raw` | 6 file `stats_*` |
 | `visualization` | `plot_eda` (gọi 5 hàm `plot_*`) | `netflix_clean` | `eda_figures` |
-| `training` | `compare_models`, `train_best_model` | `X_train`, `y_train` | `model_comparison`, `classifier` |
-| `evaluation` | `evaluate_model`, `evaluate_all_models`, `evaluate_by_segment`, `compute_feature_importance`, `plot_evaluation` | `classifier`, `X_test`, `y_test`, `model_comparison` | `metrics`, `model_comparison_test`, `metrics_by_segment`, `feature_importance`, `evaluation_figures` |
+| `training` | `compare_models`, `tune_model`, `train_all_models`, `select_best_model` | `X_train`, `y_train` | `model_comparison`, `best_hyperparameters`, `tuning_results`, `trained_models`, `trained_models_info`, `classifier` |
+| `evaluation` | `evaluate_model`, `evaluate_all_models`, `evaluate_by_segment`, `compute_feature_importance`, `plot_evaluation` | `classifier`, `trained_models`, `X_test`, `y_test`, `model_comparison`, `best_hyperparameters` | `metrics`, `model_comparison_test`, `metrics_by_segment`, `feature_importance`, `evaluation_figures` |
 | `inference` | `predict_churn` (dùng lại `clean_data`, `create_features`) | `new_customers`, `classifier` | `predictions` |
 
 Hai pipeline ghép sẵn trong `pipeline_registry.py`:
@@ -132,8 +134,10 @@ Hai pipeline ghép sẵn trong `pipeline_registry.py`:
 | `netflix_clean` | `data/03_primary/netflix_clean.parquet` | `clean_data` |
 | `model_features` | `data/04_feature/model_features.parquet` | `create_features` |
 | `X_train`, `X_test`, `y_train`, `y_test` | `data/05_model_input/*.parquet` | `split_data` |
-| `classifier` | `data/06_models/classifier.pkl/<thời gian>/` (mỗi lần chạy một phiên bản) | `train_best_model` |
+| `trained_models`, `trained_models_info` | `data/06_models/all_models/<tên mô hình>/model.pkl` và `info.json` (ghi đè mỗi lần chạy) | `train_all_models` |
+| `classifier` | `data/06_models/classifier.pkl/<thời gian>/` (mô hình được chọn, mỗi lần chạy một phiên bản) | `select_best_model` |
 | `model_comparison` | `data/08_reporting/training/model_comparison.csv` | `compare_models` |
+| `best_hyperparameters`, `tuning_results` | `data/08_reporting/training/best_hyperparameters.json`, `tuning_results.csv` | `tune_model` |
 | `metrics` | `data/08_reporting/metrics.json` | `evaluate_model` |
 | `model_comparison_test` | `data/08_reporting/evaluation/model_comparison_test.csv` | `evaluate_all_models` |
 | `metrics_by_segment`, `feature_importance` | `data/08_reporting/evaluation/*.csv` | `evaluate_by_segment`, `compute_feature_importance` |
@@ -150,7 +154,7 @@ Hai pipeline ghép sẵn trong `pipeline_registry.py`:
 | `parameters.yml` | `model_options` (tỉ lệ chia train/test, `random_state`) và `decision.threshold` (ngưỡng quyết định) |
 | `parameters_data_processing.yml` | tên cột id và cột mục tiêu |
 | `parameters_feature_engineering.yml` | cột bị bỏ, cột lấy log, ngưỡng 30 ngày và 4 hồ sơ |
-| `parameters_training.yml` | số fold, chỉ số xếp hạng, danh sách mô hình ứng viên và siêu tham số |
+| `parameters_training.yml` | số fold, chỉ số xếp hạng, danh sách mô hình ứng viên và siêu tham số, lưới GridSearch (`tuning`) |
 | `parameters_evaluation.yml` | cột dùng để phân tích theo nhóm, số lần xáo trộn khi tính độ quan trọng |
 | `parameters_statistics.yml`, `parameters_visualization.yml` | tên cột, số nhóm chia, mức ý nghĩa thống kê |
 | `parameters_inference.yml` | tên cột id trong kết quả dự đoán |
@@ -172,8 +176,9 @@ Khi chấm khách mới (pipeline `inference` và API), hệ thống dùng lại
 | Đổi tỉ lệ train/test | `model_options.test_size` trong `parameters.yml` |
 | Bỏ hoặc giữ một cột, đổi ngưỡng 30 ngày hoặc 4 hồ sơ | `parameters_feature_engineering.yml` |
 | Thêm một feature mới | hàm `create_features` trong `feature_engineering/nodes.py` |
-| Thêm một mô hình | `ESTIMATORS` trong `training/nodes.py` **và** một mục trong `parameters_training.yml` |
+| Thêm một mô hình | `ESTIMATORS` trong `training/nodes.py` **và** một mục trong `parameters_training.yml`; mô hình mới tự có thư mục riêng trong `all_models/` |
 | Đổi số fold hoặc chỉ số xếp hạng mô hình | `cv_folds`, `scoring` trong `parameters_training.yml` |
+| Đổi lưới GridSearch, hoặc tắt tinh chỉnh | `tuning.grids`, `tuning.enabled` trong `parameters_training.yml` |
 | Đổi ngưỡng quyết định (mặc định 0,5) | `decision.threshold` trong `parameters.yml` |
 | Phân tích theo nhóm khác (thay `subscription_type`) | `segment_column` trong `parameters_evaluation.yml` |
 | Đổi nơi lưu file hoặc thêm dữ liệu lưu ra đĩa | `conf/base/catalog.yml` |
@@ -194,9 +199,10 @@ model_features
    │ split_data
    ▼
 X_train, X_test, y_train, y_test
-   │ compare_models → train_best_model            [training]
+   │ compare_models → tune_model → train_all_models → select_best_model   [training]
    ▼
-model_comparison, classifier
+model_comparison, best_hyperparameters, tuning_results,
+trained_models (mỗi mô hình một thư mục), classifier (mô hình được chọn)
    │ evaluate_model, evaluate_all_models,         [evaluation]
    │ evaluate_by_segment, compute_feature_importance, plot_evaluation
    ▼
@@ -242,13 +248,23 @@ Năm biểu đồ lưu vào `data/08_reporting/figures/eda/`: cân bằng lớp,
 
 ### Bước 5: Model building (`training`)
 - `compare_models`: kiểm tra chéo (5 phần, theo ROC-AUC) cho từng ứng viên trong `parameters_training.yml`: hồi quy logistic, rừng ngẫu nhiên, gradient boosting, LightGBM và SVM. Ghi bảng xếp hạng vào `data/08_reporting/training/model_comparison.csv`, kèm `overfit_gap` để phát hiện học thuộc lòng.
-- `train_best_model`: lấy ứng viên điểm cao nhất, huấn luyện lại trên toàn bộ tập train, lưu `classifier.pkl` (mỗi lần chạy một phiên bản).
+- `tune_model` (**GridSearch**): với mô hình thắng, thử mọi tổ hợp siêu tham số trong lưới `tuning.grids` của `parameters_training.yml`, chấm từng tổ hợp bằng đúng kiểm tra chéo trên tập train. Chỉ mô hình thắng được tinh chỉnh, để chạy nhanh. Ghi mọi tổ hợp đã thử vào `data/08_reporting/training/tuning_results.csv` (tốt nhất ở đầu) và tổ hợp được chọn vào `best_hyperparameters.json`. Tắt bằng `tuning.enabled: false`.
+- `train_all_models`: huấn luyện **tất cả** mô hình ứng viên trên toàn bộ tập train (mô hình thắng dùng siêu tham số đã tinh chỉnh, các mô hình khác dùng giá trị trong `candidates`) và lưu mỗi mô hình vào **thư mục mang tên nó**:
+  ```
+  data/06_models/all_models/lightgbm/model.pkl     mô hình đã huấn luyện (kèm bước mã hoá và chuẩn hoá)
+  data/06_models/all_models/lightgbm/info.json     siêu tham số, có phải mô hình được chọn không, huấn luyện lúc nào, dùng cột nào
+  data/06_models/all_models/random_forest/...      tương tự cho các mô hình còn lại
+  ```
+  Mỗi lần chạy **ghi đè** các file này (không có phiên bản theo thời gian).
+- `select_best_model`: chọn mô hình thắng ra (không huấn luyện lại) và lưu thành `classifier.pkl`, **có phiên bản theo thời gian**. Đây là mô hình mà bước đánh giá, pipeline `inference` và API dùng. Mọi mô hình khác chỉ để so sánh và tham khảo.
+- **Vì sao không có tập validation riêng:** dự án chia train/test, còn việc chọn mô hình và tinh chỉnh dùng kiểm tra chéo trên tập train (vai trò của tập validation). Với 4.000 dòng cách này tận dụng dữ liệu tốt hơn một tập validation nhỏ, và tập test chỉ chạm một lần ở bước 6.
+- Nếu tổ hợp tốt nhất nằm **sát mép lưới** (giá trị lớn nhất hoặc nhỏ nhất của một siêu tham số), hãy mở rộng lưới theo hướng đó và chạy lại.
 - Muốn thêm mô hình: thêm vào `ESTIMATORS` trong `training/nodes.py` và thêm một mục trong `parameters_training.yml`. Mô hình phải có `predict_proba`, và nếu thư viện nằm ngoài scikit-learn (như `lightgbm`) thì thêm vào cả `requirements.txt` và `requirements-serving.txt`.
 
 ### Bước 6: Evaluation (`evaluation`)
 Tập test chỉ dùng ở bước này, một lần. Kết quả vào `data/08_reporting/`:
 - `metrics.json`: điểm của **mô hình đã chọn** (trường `model` cho biết là mô hình nào): accuracy, precision, recall, F1, ROC-AUC, kèm `baseline_accuracy` (độ chính xác nếu luôn đoán lớp phổ biến);
-- `evaluation/model_comparison_test.csv`: **bảng tham khảo** chấm cả các mô hình ứng viên trên tập test. Mô hình đã chọn là dòng `selected = True`, chọn ở bước 5 bằng kiểm tra chéo. **Không dùng bảng này để chọn lại mô hình**: chọn theo điểm test thì tập test bị dùng để quyết định và điểm báo cáo sẽ lạc quan hơn thực tế. Vì vậy các dòng xếp theo thứ hạng kiểm tra chéo (`cv_rank`), không xếp theo điểm test;
+- `evaluation/model_comparison_test.csv`: **bảng tham khảo** chấm cả các mô hình ứng viên trên tập test. Các mô hình được lấy từ `all_models/` (đã huấn luyện ở bước 5, không huấn luyện lại). Mô hình đã chọn là dòng `selected = True`, chọn ở bước 5 bằng kiểm tra chéo (chỉ mô hình này dùng siêu tham số đã tinh chỉnh, các mô hình khác dùng giá trị mặc định trong `candidates`, nên bảng hơi thiên về mô hình đã chọn; dòng của nó khớp `metrics.json`). **Không dùng bảng này để chọn lại mô hình**: chọn theo điểm test thì tập test bị dùng để quyết định và điểm báo cáo sẽ lạc quan hơn thực tế. Vì vậy các dòng xếp theo thứ hạng kiểm tra chéo (`cv_rank`), không xếp theo điểm test;
 - `evaluation/metrics_by_segment.csv`: điểm theo từng gói đăng ký;
 - `evaluation/feature_importance.csv`: permutation importance;
 - `evaluation/figures/`: ma trận nhầm lẫn, đường ROC, độ quan trọng feature.

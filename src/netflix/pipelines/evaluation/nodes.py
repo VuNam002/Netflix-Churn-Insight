@@ -22,7 +22,7 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 
-from netflix.pipelines.training.nodes import ESTIMATORS, _make_pipeline
+from netflix.pipelines.training.nodes import ESTIMATORS, get_trained_model
 
 logger = logging.getLogger(__name__)
 
@@ -88,36 +88,31 @@ def evaluate_model(
 
 
 def evaluate_all_models(  # noqa: PLR0913
-    X_train: pd.DataFrame,
-    y_train: pd.DataFrame,
+    trained_models: dict,
     X_test: pd.DataFrame,
     y_test: pd.DataFrame,
     model_comparison: pd.DataFrame,
-    model_options: dict,
-    training: dict,
+    best_hyperparameters: dict,
     decision: dict,
 ) -> pd.DataFrame:
-    """Score every candidate on the test set, for the report only.
+    """Score every saved model on the test set, for the report only.
 
     The model was ALREADY chosen by cross-validation on the train set
     (``model_comparison``); ``selected`` marks it. This table must not be used to
     pick a different model: choosing by test score would use the test set to
     decide, and the reported score would then be too optimistic. Rows keep the
     cross-validation order (``cv_rank``), not the test order, on purpose.
+
+    The models are the ones saved by ``train_all_models``. Only the selected model
+    has tuned hyperparameters; the others use the values in ``candidates``. So the
+    table slightly favours the selected model, and its row equals ``metrics``.
     """
-    y_train_flat = y_train.iloc[:, 0]
     y_true = y_test.iloc[:, 0].to_numpy()
-    selected = model_comparison.loc[model_comparison["cv_score_mean"].idxmax(), "model"]
+    selected = best_hyperparameters["model"]
 
     rows = []
     for rank, name in enumerate(model_comparison["model"], start=1):
-        classifier = _make_pipeline(
-            X_train,
-            name,
-            training["candidates"][name],
-            model_options["random_state"],
-        )
-        classifier.fit(X_train, y_train_flat)
+        classifier = get_trained_model(trained_models, name)
         proba, pred = _predict(classifier, X_test, decision["threshold"])
         rows.append(
             {
